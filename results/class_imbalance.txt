@@ -1,0 +1,16 @@
+BDD100K mini train instance counts
+images: 3000
+instances: 23559
+
+car               10369  44.01%
+traffic sign       5050  21.44%
+traffic light      3128  13.28%
+person             2444  10.37%
+truck              1380   5.86%
+bus                 567   2.41%
+bicycle             282   1.20%
+rider               193   0.82%
+motorcycle          120   0.51%
+train                26   0.11%
+
+Class imbalance: car, traffic sign, and traffic light dominate. train has only a few dozen instances, so an unweighted loss will under-fit that class and the other rare road users (rider, motorcycle, bicycle). Detection training uses inverse-sqrt image sampling so rare classes appear more often. Semantic training uses inverse-sqrt pixel-frequency class weights.

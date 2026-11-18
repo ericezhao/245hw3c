@@ -1,0 +1,25 @@
+# Install inside the course env: conda activate 245hw3c
+# Verified on macOS Apple Silicon, Python 3.11.
+torch>=2.2.0
+torchvision>=0.17.0
+ultralytics>=8.1.0
+pycocotools>=2.0.7
+albumentations>=2.0.0
+matplotlib>=3.8.0
+opencv-python>=4.9.0
+pandas>=2.0.0
+Pillow>=10.0.0
+tqdm>=4.66.0
+onnx>=1.16.0
+onnxruntime>=1.17.0
+seaborn>=0.13.0
+scikit-learn>=1.4.0
+segmentation-models-pytorch>=0.5.0
+huggingface_hub>=0.26.0
+fpdf2>=2.7.0
+requests>=2.32.0
+
+# OpenMMLab (mmcv, mmsegmentation) is listed in the handout for a CUDA host.
+# There is no working Apple Silicon build of mmcv in this environment.
+# Part 4 trains DeepLabV3+ directly; see configs/deeplabv3plus_bdd.py for the
+# MMSegmentation config to use on a CUDA machine.

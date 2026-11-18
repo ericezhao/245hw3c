@@ -1,0 +1,16 @@
+data/
+seg_masks/
+yolo_bdd/
+yolo_runs/
+checkpoints/
+runs/
+logs/
+results/preds/
+__pycache__/
+*.pyc
+*.pth
+*.pt
+*.onnx
+.DS_Store
+.mplconfig/
+results/pipeline.*
