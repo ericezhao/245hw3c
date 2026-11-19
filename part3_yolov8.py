@@ -1,4 +1,4 @@
-"""Part 3: convert BDD mini to YOLO labels, train YOLOv8s, export ONNX."""
+"""Part 3: convert BDD mini to YOLO labels, train YOLOv8m, export ONNX."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from bdd_common import CLASS_NAMES, DATA_ROOT, RESULTS, ROOT, device_label, eval
 
 YOLO_ROOT = ROOT / "yolo_bdd"
 YAML_PATH = ROOT / "configs" / "bdd100k_mini.yaml"
-RUN_DIR = ROOT / "yolo_runs" / "bdd_yolov8s"
 
 
 def coco_to_yolo(split: str) -> None:
@@ -83,8 +82,8 @@ def write_yaml() -> None:
     print("wrote", YAML_PATH)
 
 
-def latest_map50() -> float:
-    csv_path = RUN_DIR / "results.csv"
+def latest_map50(run_dir: Path) -> float:
+    csv_path = run_dir / "results.csv"
     if not csv_path.exists():
         return 0.0
     import pandas as pd
@@ -98,12 +97,12 @@ def latest_map50() -> float:
     return float(frame[column].iloc[-1])
 
 
-def benchmark_onnx(onnx_path: Path) -> float:
+def benchmark_onnx(onnx_path: Path, imgsz: int) -> float:
     import onnxruntime as ort
 
     session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     input_name = session.get_inputs()[0].name
-    dummy = np.random.randn(1, 3, 640, 640).astype(np.float32)
+    dummy = np.random.randn(1, 3, imgsz, imgsz).astype(np.float32)
     for _ in range(5):
         session.run(None, {input_name: dummy})
     start = time.perf_counter()
@@ -113,11 +112,11 @@ def benchmark_onnx(onnx_path: Path) -> float:
     return steps / (time.perf_counter() - start)
 
 
-def benchmark_mps(weights: Path, device, device_arg) -> float:
+def benchmark_mps(weights: Path, device, device_arg, imgsz: int) -> float:
     model = YOLO(str(weights))
-    dummy = np.random.randint(0, 255, (640, 640, 3), dtype=np.uint8)
+    dummy = np.random.randint(0, 255, (imgsz, imgsz, 3), dtype=np.uint8)
     for _ in range(3):
-        model.predict(dummy, imgsz=640, device=device_arg, verbose=False)
+        model.predict(dummy, imgsz=imgsz, device=device_arg, verbose=False)
     if device.type == "mps":
         torch.mps.synchronize()
     elif device.type == "cuda":
@@ -125,7 +124,7 @@ def benchmark_mps(weights: Path, device, device_arg) -> float:
     start = time.perf_counter()
     steps = 20
     for _ in range(steps):
-        model.predict(dummy, imgsz=640, device=device_arg, verbose=False)
+        model.predict(dummy, imgsz=imgsz, device=device_arg, verbose=False)
     if device.type == "mps":
         torch.mps.synchronize()
     elif device.type == "cuda":
@@ -137,9 +136,12 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch", type=int, default=8)
-    parser.add_argument("--imgsz", type=int, default=640)
+    parser.add_argument("--imgsz", type=int, default=960)
+    parser.add_argument("--model", type=str, default="yolov8m.pt")
     parser.add_argument("--eval-only", action="store_true")
     args = parser.parse_args()
+    model_tag = Path(args.model).stem  # yolov8m
+    run_dir = ROOT / "yolo_runs" / f"bdd_{model_tag}"
 
     RESULTS.mkdir(parents=True, exist_ok=True)
     coco_to_yolo("train")
@@ -148,11 +150,11 @@ def main() -> None:
 
     device = get_device()
     device_arg = "mps" if device.type == "mps" else (0 if device.type == "cuda" else "cpu")
-    weights = RUN_DIR / "weights" / "best.pt"
+    weights = run_dir / "weights" / "best.pt"
 
-    last_pt = RUN_DIR / "weights" / "last.pt"
+    last_pt = run_dir / "weights" / "last.pt"
     done_epochs = 0
-    results_csv = RUN_DIR / "results.csv"
+    results_csv = run_dir / "results.csv"
     if results_csv.exists():
         import pandas as pd
 
@@ -167,7 +169,7 @@ def main() -> None:
             model = YOLO(str(last_pt))
             model.train(resume=True)
         else:
-            model = YOLO("yolov8s.pt")
+            model = YOLO(args.model)
             model.train(
                 data=str(YAML_PATH),
                 epochs=args.epochs,
@@ -175,8 +177,8 @@ def main() -> None:
                 batch=args.batch,
                 device=device_arg,
                 project=str(ROOT / "yolo_runs"),
-                name="bdd_yolov8s",
-                patience=10,
+                name=f"bdd_{model_tag}",
+                patience=15,
                 cos_lr=True,
                 amp=device.type == "cuda",
                 workers=2,
@@ -190,17 +192,17 @@ def main() -> None:
 
     trained = YOLO(str(weights))
     onnx_path = Path(trained.export(format="onnx", imgsz=args.imgsz))
-    ultra_map50 = latest_map50()
-    coco_metrics = dump_coco_predictions(trained, device_arg)
+    ultra_map50 = latest_map50(run_dir)
+    coco_metrics = dump_coco_predictions(trained, device_arg, args.imgsz)
     map50 = coco_metrics["map50"] or ultra_map50
     n_params = sum(p.numel() for p in trained.model.parameters()) / 1e6
-    gpu_fps = benchmark_mps(weights, device, device_arg)
-    cpu_fps = benchmark_onnx(onnx_path)
-    copy_plots()
+    gpu_fps = benchmark_mps(weights, device, device_arg, args.imgsz)
+    cpu_fps = benchmark_onnx(onnx_path, args.imgsz)
+    copy_plots(run_dir)
     write_metrics(
         "yolov8",
         {
-            "model": "YOLOv8s",
+            "model": model_tag.upper().replace("YOLOV", "YOLOv"),
             "mAP@0.5": map50,
             "mAP": coco_metrics["map"],
             "mAP_small": coco_metrics["map_small"],
@@ -217,22 +219,23 @@ def main() -> None:
             "gpu": device_label(device),
             "onnx": str(onnx_path),
             "epochs": args.epochs,
+            "imgsz": args.imgsz,
         },
     )
-    print(f"YOLOv8s mAP@0.5 {map50:.4f} | GPU {gpu_fps:.1f} FPS | ONNX CPU {cpu_fps:.1f} FPS")
+    print(f"{model_tag} mAP@0.5 {map50:.4f} | GPU {gpu_fps:.1f} FPS | ONNX CPU {cpu_fps:.1f} FPS")
 
 
-def copy_plots() -> None:
+def copy_plots(run_dir: Path) -> None:
     import shutil
 
-    if not RUN_DIR.exists():
+    if not run_dir.exists():
         return
-    for path in RUN_DIR.glob("*.png"):
+    for path in run_dir.glob("*.png"):
         target = RESULTS / f"yolo_{path.name}"
         shutil.copy2(path, target)
 
 
-def dump_coco_predictions(model: YOLO, device_arg) -> dict:
+def dump_coco_predictions(model: YOLO, device_arg, imgsz: int) -> dict:
     """Re-score the val split with pycocotools so small-object AP matches Part 2."""
     ann_path = DATA_ROOT / "annotations" / "instances_val.json"
     with ann_path.open() as handle:
@@ -241,7 +244,7 @@ def dump_coco_predictions(model: YOLO, device_arg) -> dict:
     paths = [str(DATA_ROOT / "images" / "val" / img["file_name"]) for img in coco["images"]]
     results = []
     for pred in model.predict(
-        paths, stream=True, conf=0.001, iou=0.7, imgsz=640,
+        paths, stream=True, conf=0.001, iou=0.7, imgsz=imgsz,
         device=device_arg, verbose=False, max_det=100,
     ):
         image_id = stem_to_id[Path(pred.path).stem]

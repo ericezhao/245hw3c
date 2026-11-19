@@ -30,12 +30,12 @@ from bdd_common import (
 
 PREDS = {
     "Faster R-CNN": RESULTS / "faster_rcnn_predictions.json",
-    "YOLOv8s": RESULTS / "yolov8_predictions.json",
+    "YOLOv8": RESULTS / "yolov8_predictions.json",
     "Mask R-CNN": RESULTS / "mask_rcnn_predictions.json",
 }
 METRIC_FILES = {
     "Faster R-CNN FPN": RESULTS / "faster_rcnn_metrics.json",
-    "YOLOv8s": RESULTS / "yolov8_metrics.json",
+    "YOLOv8": RESULTS / "yolov8_metrics.json",
     "DeepLabV3+ R50": RESULTS / "deeplabv3plus_metrics.json",
     "Mask R-CNN FPN": RESULTS / "mask_rcnn_metrics.json",
 }
@@ -126,7 +126,7 @@ def scatter_and_bars(rows: list[dict]) -> None:
     fig, ax = plt.subplots(figsize=(9, 4.4))
     x = np.arange(len(labels))
     ax.bar(x - 0.18, [left.get(name) or 0 for name in labels], width=0.36, label="Faster R-CNN")
-    ax.bar(x + 0.18, [right.get(name) or 0 for name in labels], width=0.36, label="YOLOv8s")
+    ax.bar(x + 0.18, [right.get(name) or 0 for name in labels], width=0.36, label="YOLOv8")
     ax.set_xticks(x, labels, rotation=30, ha="right", fontsize=8)
     ax.set_ylabel("AP@0.50")
     ax.set_title("Per-class AP at IoU 0.50")
