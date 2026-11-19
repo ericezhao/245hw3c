@@ -18,7 +18,10 @@ from torch.utils.data import Dataset
 import torchvision.transforms.functional as TF
 
 ROOT = Path(__file__).resolve().parent
-DATA_ROOT = ROOT / "data" / "bdd100k_mini"
+# Detection / instance tasks use official box2d labels (100k frames).
+DATA_ROOT = ROOT / "data" / "bdd100k_det_mini"
+# Semantic segmentation keeps the 10k trainId masks from prepare_bdd_mini.py.
+SEG_DATA_ROOT = ROOT / "data" / "bdd100k_mini"
 RESULTS = ROOT / "results"
 CHECKPOINT_DIR = ROOT / "checkpoints"
 

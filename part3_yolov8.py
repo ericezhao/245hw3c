@@ -134,9 +134,9 @@ def benchmark_mps(weights: Path, device, device_arg, imgsz: int) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=80)
-    parser.add_argument("--batch", type=int, default=8)
-    parser.add_argument("--imgsz", type=int, default=1280)
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--batch", type=int, default=16)
+    parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--model", type=str, default="yolov8s.pt")
     parser.add_argument("--eval-only", action="store_true")
     args = parser.parse_args()
@@ -178,16 +178,13 @@ def main() -> None:
                 device=device_arg,
                 project=str(ROOT / "yolo_runs"),
                 name=f"bdd_{model_tag}",
-                patience=20,
+                patience=10,
                 cos_lr=True,
                 amp=device.type == "cuda",
                 workers=2,
                 exist_ok=True,
                 seed=245,
                 plots=True,
-                multi_scale=True,
-                close_mosaic=15,
-                copy_paste=0.1,
             )
 
     if not weights.exists():

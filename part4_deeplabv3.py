@@ -27,7 +27,7 @@ from tqdm import tqdm
 from bdd_common import (
     CHECKPOINT_DIR,
     CLASS_NAMES,
-    DATA_ROOT,
+    SEG_DATA_ROOT,
     NUM_CLASSES,
     RESULTS,
     ROOT,
@@ -74,7 +74,7 @@ def build_transforms(train: bool):
 
 class SegDataset(Dataset):
     def __init__(self, split: str, train: bool):
-        self.image_dir = DATA_ROOT / "images" / split
+        self.image_dir = SEG_DATA_ROOT / "images" / split
         self.mask_dir = ROOT / "seg_masks" / split
         self.paths = sorted(self.image_dir.glob("*.jpg"))
         self.transform = build_transforms(train)
