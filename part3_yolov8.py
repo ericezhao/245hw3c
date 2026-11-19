@@ -1,4 +1,4 @@
-"""Part 3: convert BDD mini to YOLO labels, train YOLOv8m, export ONNX."""
+"""Part 3: convert BDD mini to YOLO labels, train YOLOv8s, export ONNX."""
 
 from __future__ import annotations
 
@@ -134,13 +134,13 @@ def benchmark_mps(weights: Path, device, device_arg, imgsz: int) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--batch", type=int, default=8)
-    parser.add_argument("--imgsz", type=int, default=960)
-    parser.add_argument("--model", type=str, default="yolov8m.pt")
+    parser.add_argument("--imgsz", type=int, default=1280)
+    parser.add_argument("--model", type=str, default="yolov8s.pt")
     parser.add_argument("--eval-only", action="store_true")
     args = parser.parse_args()
-    model_tag = Path(args.model).stem  # yolov8m
+    model_tag = Path(args.model).stem  # yolov8s
     run_dir = ROOT / "yolo_runs" / f"bdd_{model_tag}"
 
     RESULTS.mkdir(parents=True, exist_ok=True)
@@ -178,13 +178,16 @@ def main() -> None:
                 device=device_arg,
                 project=str(ROOT / "yolo_runs"),
                 name=f"bdd_{model_tag}",
-                patience=15,
+                patience=20,
                 cos_lr=True,
                 amp=device.type == "cuda",
                 workers=2,
                 exist_ok=True,
                 seed=245,
                 plots=True,
+                multi_scale=True,
+                close_mosaic=15,
+                copy_paste=0.1,
             )
 
     if not weights.exists():
