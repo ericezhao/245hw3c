@@ -44,10 +44,14 @@ OpenMMLab (`mmcv`, `mmsegmentation`) does not train on MPS. `configs/deeplabv3pl
 
 ## Data
 
-The handout URL `https://dl.cv.ethz.ch/bdd100k/data/bdd100k_mini_coco.zip` does not resolve. `prepare_bdd_mini.py` downloads 3,000 train and 500 val frames from the public Hugging Face copy of BDD100K 10k, builds COCO instance JSON from connected components of the 10 object classes, and writes semantic masks (`0` background, `1-10` classes, `255` ignore).
+The handout URL `https://dl.cv.ethz.ch/bdd100k/data/bdd100k_mini_coco.zip` does not resolve. We build two mini splits:
+
+- **Detection / instance (Parts 2, 3, 5):** `prepare_bdd_det_mini.py` — official BDD box2d labels + 100k images → `data/bdd100k_det_mini`
+- **Semantic (Part 4):** `prepare_bdd_mini.py` — 10k frames + trainId masks → `data/bdd100k_mini` and `seg_masks/`
 
 ```bash
-python prepare_bdd_mini.py
+python prepare_bdd_det_mini.py   # official boxes for detectors
+python prepare_bdd_mini.py       # semantic masks for DeepLab
 ```
 
 Image files, masks, checkpoints, and YOLO runs are gitignored.
