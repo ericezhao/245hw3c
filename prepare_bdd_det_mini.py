@@ -92,7 +92,8 @@ def parse_label(raw: dict) -> list[dict]:
             continue
         box = obj["box2d"]
         x1, y1, x2, y2 = float(box["x1"]), float(box["y1"]), float(box["x2"]), float(box["y2"])
-        w, h = x2 - x1, y2 - y1
+        # BDD / Scalabel: width = x2 - x1 + 1, height = y2 - y1 + 1
+        w, h = x2 - x1 + 1.0, y2 - y1 + 1.0
         if w < 1 or h < 1:
             continue
         boxes.append({"category": cat, "bbox": [x1, y1, w, h], "area": w * h})
@@ -296,6 +297,8 @@ def main() -> None:
         raise SystemExit("not enough labelled images with HF files")
 
     rng = random.Random(args.seed)
+    # Rare-boost TRAIN only. Val must stay a plain random sample — stuffing
+    # train/bike/motor into val crushes mean mAP50 (YOLOv8s on full BDD is ~0.58).
     train_stems = sample_with_rare(
         train_pool,
         train_boxes,
@@ -304,13 +307,16 @@ def main() -> None:
         motor_cap=args.motor_cap,
         bike_cap=args.bike_cap,
     )
-    val_stems = sample_with_rare(
-        val_pool,
-        val_boxes,
-        args.val_n,
-        random.Random(args.seed + 1),
-        motor_cap=args.val_motor_cap,
-        bike_cap=args.val_bike_cap,
+    val_rng = random.Random(args.seed + 1)
+    val_pool_shuffled = list(val_pool)
+    val_rng.shuffle(val_pool_shuffled)
+    val_stems = val_pool_shuffled[: args.val_n]
+    print(
+        "val rare image counts:",
+        {
+            cat: sum(1 for stem in val_stems if any(box["category"] == cat for box in val_boxes[stem]))
+            for cat in RARE_CLASSES
+        },
     )
 
     manifest = {
@@ -318,7 +324,7 @@ def main() -> None:
         "label_zip": LABEL_ZIP_URL,
         "hf_repo": HF_REPO,
         "seed": args.seed,
-        "rare_boost": list(RARE_CLASSES),
+        "rare_boost_train_only": list(RARE_CLASSES),
         "train": train_stems,
         "val": val_stems,
     }

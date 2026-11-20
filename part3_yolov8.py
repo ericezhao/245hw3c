@@ -29,6 +29,11 @@ def coco_to_yolo(split: str) -> None:
 
     image_dir = YOLO_ROOT / split / "images"
     label_dir = YOLO_ROOT / split / "labels"
+    # Drop leftovers from older splits so Ultralytics does not train/eval extras.
+    if image_dir.exists():
+        shutil.rmtree(image_dir)
+    if label_dir.exists():
+        shutil.rmtree(label_dir)
     image_dir.mkdir(parents=True, exist_ok=True)
     label_dir.mkdir(parents=True, exist_ok=True)
     src_dir = DATA_ROOT / "images" / split
@@ -94,7 +99,7 @@ def latest_map50(run_dir: Path) -> float:
     if column not in frame.columns:
         matches = [col for col in frame.columns if "mAP50" in col]
         column = matches[0]
-    return float(frame[column].iloc[-1])
+    return float(frame[column].max())
 
 
 def benchmark_onnx(onnx_path: Path, imgsz: int) -> float:
@@ -135,9 +140,10 @@ def benchmark_mps(weights: Path, device, device_arg, imgsz: int) -> float:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch", type=int, default=16)
-    parser.add_argument("--imgsz", type=int, default=640)
+    parser.add_argument("--batch", type=int, default=8)
+    parser.add_argument("--imgsz", type=int, default=960)
     parser.add_argument("--model", type=str, default="yolov8s.pt")
+    parser.add_argument("--patience", type=int, default=20)
     parser.add_argument("--eval-only", action="store_true")
     args = parser.parse_args()
     model_tag = Path(args.model).stem  # yolov8s
@@ -178,12 +184,14 @@ def main() -> None:
                 device=device_arg,
                 project=str(ROOT / "yolo_runs"),
                 name=f"bdd_{model_tag}",
-                patience=10,
+                patience=args.patience,
                 cos_lr=True,
+                close_mosaic=10,
+                copy_paste=0.1,
                 amp=device.type == "cuda",
-                workers=2,
-                exist_ok=True,
+                workers=8 if device.type == "cuda" else 2,
                 seed=245,
+                exist_ok=True,
                 plots=True,
             )
 
@@ -245,7 +253,7 @@ def dump_coco_predictions(model: YOLO, device_arg, imgsz: int) -> dict:
     results = []
     for pred in model.predict(
         paths, stream=True, conf=0.001, iou=0.7, imgsz=imgsz,
-        device=device_arg, verbose=False, max_det=100,
+        device=device_arg, verbose=False, max_det=300,
     ):
         image_id = stem_to_id[Path(pred.path).stem]
         if pred.boxes is None or len(pred.boxes) == 0:
