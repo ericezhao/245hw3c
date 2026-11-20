@@ -381,6 +381,17 @@ def write_report(rows: list[dict]) -> None:
     pdf.multi_cell = multi_cell
     pdf.set_font("Helvetica", "B", 16)
     pdf.multi_cell(0, 8, "Urban Traffic Scene Understanding on BDD100K Mini")
+    pdf.set_font("Helvetica", size=11)
+    pdf.ln(1)
+    pdf.multi_cell(0, 5, "Course: HW3c / Urban Traffic Scene Understanding")
+    pdf.multi_cell(
+        0,
+        5,
+        "Authors: Eric Zhao, Anurag Sanadi, Jietian Chen, Nathan Pak",
+    )
+    pdf.set_text_color(0, 0, 180)
+    pdf.multi_cell(0, 5, "Code: https://github.com/ericezhao/245hw3c")
+    pdf.set_text_color(0, 0, 0)
     pdf.set_font("Helvetica", size=10)
     pdf.ln(1)
     pdf.multi_cell(
@@ -393,7 +404,9 @@ def write_report(rows: list[dict]) -> None:
         +
         "The handout mini-zip host does not resolve. Detection/instance parts use official BDD box2d labels "
         "on 10,000 train / 500 val 100k frames (rare classes boosted in train; val excludes the near-empty train class). "
-        "DeepLab uses a separate 3,000 / 500 semantic-10k split with trainId masks.",
+        "DeepLab uses a separate 3,000 / 500 semantic-10k split with trainId masks. "
+        "Rubric targets for this run: Faster R-CNN mAP@0.5 >= 0.55, YOLOv8s mAP@0.5 >= 0.60 (+ ONNX export/speed), "
+        "DeepLabV3+ mIoU >= 0.45, and Mask R-CNN qualitative masks in the figures below.",
     )
     pdf.ln(2)
     pdf.set_font("Helvetica", "B", 12)
@@ -606,9 +619,12 @@ def write_report(rows: list[dict]) -> None:
     pdf.multi_cell(
         0,
         4.6,
+        "Team: Eric Zhao, Anurag Sanadi, Jietian Chen, Nathan Pak. "
+        "Repository: https://github.com/ericezhao/245hw3c. "
         "Class imbalance note from the training set is in results/class_imbalance.txt. "
         "Figures for this report are in results/. Checkpoints are under checkpoints/ and are not committed. "
-        "Detection data: prepare_bdd_det_mini.py. Semantic data: prepare_bdd_mini.py. Image files are gitignored.",
+        "Detection data: prepare_bdd_det_mini.py. Semantic data: prepare_bdd_mini.py. Image files are gitignored. "
+        "Reproduce with colab_run.ipynb or the part1-part6 scripts listed in README.md.",
     )
     out = ROOT / "report.pdf"
     pdf.output(str(out))
