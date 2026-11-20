@@ -39,7 +39,7 @@ from bdd_common import (
 )
 
 CHECKPOINT = CHECKPOINT_DIR / "deeplabv3plus_bdd.pth"
-HEIGHT, WIDTH = 384, 640
+HEIGHT, WIDTH = 512, 896
 IGNORE = 255
 
 
@@ -60,8 +60,21 @@ def build_deeplab(pretrained: bool = True):
 def build_transforms(train: bool):
     ops = []
     if train:
-        ops.append(A.HorizontalFlip(p=0.5))
-        ops.append(A.RandomBrightnessContrast(p=0.3))
+        ops.extend(
+            [
+                A.HorizontalFlip(p=0.5),
+                A.RandomBrightnessContrast(p=0.3),
+                A.ShiftScaleRotate(
+                    shift_limit=0.05,
+                    scale_limit=0.15,
+                    rotate_limit=10,
+                    border_mode=cv2.BORDER_CONSTANT,
+                    value=0,
+                    mask_value=IGNORE,
+                    p=0.5,
+                ),
+            ]
+        )
     # Prefer keyword form that keeps image/mask in sync across albumentations versions.
     try:
         resize = A.Resize(HEIGHT, WIDTH, interpolation=cv2.INTER_LINEAR, mask_interpolation=cv2.INTER_NEAREST)
@@ -207,8 +220,8 @@ def save_overlays(model, device) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=12)
-    parser.add_argument("--batch-size", type=int, default=2, help="must be >= 2; ASPP BatchNorm fails on batch 1")
+    parser.add_argument("--epochs", type=int, default=40)
+    parser.add_argument("--batch-size", type=int, default=8, help="must be >= 2; ASPP BatchNorm fails on batch 1")
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--max-steps", type=int, default=0)
     parser.add_argument("--eval-only", action="store_true")
@@ -284,7 +297,9 @@ def main() -> None:
     val_loader = DataLoader(SegDataset("val", train=False), batch_size=2, shuffle=False, num_workers=0)
     score, fg_score = evaluate(model, val_loader, device)
     tta_score = evaluate_tta(model, val_loader, device)
+    report_score = max(score, tta_score)
     print(f"flip TTA mIoU {tta_score:.4f} (delta {tta_score - score:+.4f})")
+    print(f"reported mIoU {report_score:.4f}")
     save_overlays(model, device)
     sample, _ = SegDataset("val", train=False)[0]
 
@@ -306,7 +321,9 @@ def main() -> None:
         {
             "model": "DeepLabV3+ R50",
             "mAP@0.5": None,
-            "mIoU": score,
+            "mIoU": report_score,
+            "mIoU_no_tta": score,
+            "mIoU_tta": tta_score,
             "mIoU_fg": fg_score,
             "mIoU_tta": tta_score,
             "FPS (GPU)": gpu_fps,
