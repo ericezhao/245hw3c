@@ -62,14 +62,22 @@ def build_transforms(train: bool):
     if train:
         ops.append(A.HorizontalFlip(p=0.5))
         ops.append(A.RandomBrightnessContrast(p=0.3))
+    # Prefer keyword form that keeps image/mask in sync across albumentations versions.
+    try:
+        resize = A.Resize(HEIGHT, WIDTH, interpolation=cv2.INTER_LINEAR, mask_interpolation=cv2.INTER_NEAREST)
+    except TypeError:
+        resize = A.Resize(HEIGHT, WIDTH, interpolation=cv2.INTER_LINEAR)
     ops.extend(
         [
-            A.Resize(HEIGHT, WIDTH, interpolation=cv2.INTER_LINEAR, mask_interpolation=cv2.INTER_NEAREST),
+            resize,
             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
         ]
     )
-    return A.Compose(ops)
+    try:
+        return A.Compose(ops, is_check_shapes=True)
+    except TypeError:
+        return A.Compose(ops)
 
 
 class SegDataset(Dataset):
@@ -77,6 +85,9 @@ class SegDataset(Dataset):
         self.image_dir = SEG_DATA_ROOT / "images" / split
         self.mask_dir = ROOT / "seg_masks" / split
         self.paths = sorted(self.image_dir.glob("*.jpg"))
+        missing = [p for p in self.paths if not (self.mask_dir / f"{p.stem}.png").exists()]
+        if missing:
+            raise FileNotFoundError(f"{len(missing)} images lack masks, e.g. {missing[0].name}")
         self.transform = build_transforms(train)
 
     def __len__(self) -> int:
@@ -86,6 +97,11 @@ class SegDataset(Dataset):
         path = self.paths[idx]
         image = np.array(Image.open(path).convert("RGB"))
         mask = np.array(Image.open(self.mask_dir / f"{path.stem}.png"))
+        if mask.ndim == 3:
+            mask = mask[:, :, 0]
+        # Some HF/cached pairs disagree by a few pixels; snap mask to the image grid.
+        if mask.shape[:2] != image.shape[:2]:
+            mask = cv2.resize(mask, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
         out = self.transform(image=image, mask=mask)
         return out["image"], out["mask"].long()
 
