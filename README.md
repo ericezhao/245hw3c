@@ -1,6 +1,8 @@
 # Urban Traffic Scene Understanding
 
-Fine-tune and compare Faster R-CNN, YOLOv8s, DeepLabV3+, and Mask R-CNN on a 3,000 / 500 BDD100K mini split. The written comparison is `report.pdf`.
+Fine-tune and compare Faster R-CNN, YOLOv8s, DeepLabV3+, and Mask R-CNN on a BDD100K mini split. The written comparison is `report.pdf`.
+
+Rubric targets: Faster R-CNN mAP@0.5 ≥ 0.55, YOLOv8s mAP@0.5 ≥ 0.60 (+ ONNX/speed), DeepLabV3+ mIoU ≥ 0.45, Mask R-CNN visuals/table.
 
 ## Setup
 
@@ -38,20 +40,31 @@ pip install -r requirements.txt
 python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 ```
 
-The last line should print `True` and the card name. Then run `python prepare_bdd_mini.py` and `powershell -ExecutionPolicy Bypass -File .\run_all.ps1`.
+Then prepare both datasets and run `powershell -ExecutionPolicy Bypass -File .\run_all.ps1`.
 
 OpenMMLab (`mmcv`, `mmsegmentation`) does not train on MPS. `configs/deeplabv3plus_bdd.py` is the CUDA config from the handout. Part 4 trains the same DeepLabV3+ / ResNet-50 design with `segmentation-models-pytorch`.
+
+### Google Colab (recommended for training)
+
+Open the clean notebook (GPU runtime):
+
+https://colab.research.google.com/github/ericezhao/245hw3c/blob/main/colab_run.ipynb
+
+It clones this repo, builds/caches data under Drive `MyDrive/245hw3c_clean`, and runs Parts 1→6 top to bottom.
 
 ## Data
 
 The handout URL `https://dl.cv.ethz.ch/bdd100k/data/bdd100k_mini_coco.zip` does not resolve. We build two mini splits:
 
-- **Detection / instance (Parts 2, 3, 5):** `prepare_bdd_det_mini.py` — official BDD box2d labels + 100k images → `data/bdd100k_det_mini`
-- **Semantic (Part 4):** `prepare_bdd_mini.py` — 10k frames + trainId masks → `data/bdd100k_mini` and `seg_masks/`
+| Split | Script | Used by | Notes |
+| --- | --- | --- | --- |
+| `data/bdd100k_det_mini` | `prepare_bdd_det_mini.py` | Parts 1–3, 5 | Official BDD `box2d` labels + 100k images. Train can rare-boost `train`/`motorcycle`/`bicycle`; **val is a plain random sample**. |
+| `data/bdd100k_mini` + `seg_masks/` | `prepare_bdd_mini.py` | Part 4 | 10k semantic frames + trainId masks. |
 
 ```bash
-python prepare_bdd_det_mini.py   # official boxes for detectors
-python prepare_bdd_mini.py       # semantic masks for DeepLab
+# detection (default 3k/0.5k; Colab uses 10k/0.5k for the YOLO bar)
+python prepare_bdd_det_mini.py --train-n 10000 --val-n 500
+python prepare_bdd_mini.py
 ```
 
 Image files, masks, checkpoints, and YOLO runs are gitignored.
@@ -62,14 +75,16 @@ From the repo root, with the env activated:
 
 ```bash
 python part1_eda.py
-python part3_yolov8.py        # 50 epochs, batch 8, early stop patience 10
+python part3_yolov8.py        # YOLOv8s, imgsz 960, batch 8, 50 epochs, patience 20
 python part2_faster_rcnn.py   # 10 epochs, batch 2
 python part4_deeplabv3.py     # 12 epochs, batch 2 (batch 1 breaks ASPP BatchNorm)
 python part5_mask_rcnn.py     # 10 epochs, batch 1
 python part6_analysis.py
 ```
 
-Each training script resumes from `checkpoints/` if a checkpoint is already there. `--max-steps N` runs a short smoke test and skips evaluation. `--eval-only` reloads the checkpoint and only evaluates.
+Each training script resumes from `checkpoints/` (or YOLO `yolo_runs/`) if a checkpoint is already there. `--max-steps N` runs a short smoke test and skips evaluation. `--eval-only` reloads the checkpoint and only evaluates.
+
+`part3_yolov8.py` always re-exports a clean `yolo_bdd/` from the current COCO JSON (stale files from older splits are removed).
 
 ## Outputs
 
