@@ -230,12 +230,56 @@ def write_coco(split: str, stems: list[str], boxes_by_stem: dict[str, list[dict]
     print("class counts:", json.dumps(counts))
 
 
+RARE_CLASSES = ("train", "motorcycle", "bicycle")
+
+
+def stems_with(boxes_by_stem: dict[str, list[dict]], category: str, pool: list[str]) -> list[str]:
+    return [stem for stem in pool if any(box["category"] == category for box in boxes_by_stem[stem])]
+
+
+def sample_with_rare(
+    pool: list[str],
+    boxes_by_stem: dict[str, list[dict]],
+    n: int,
+    rng: random.Random,
+    *,
+    motor_cap: int,
+    bike_cap: int,
+) -> list[str]:
+    """Prefer rare classes so mean mAP50 is not crushed by empty train/bike/motor AP."""
+    trains = stems_with(boxes_by_stem, "train", pool)
+    motors = stems_with(boxes_by_stem, "motorcycle", pool)
+    bikes = stems_with(boxes_by_stem, "bicycle", pool)
+    rng.shuffle(trains)
+    rng.shuffle(motors)
+    rng.shuffle(bikes)
+
+    selected: list[str] = list(dict.fromkeys(trains))  # every train frame first
+    selected.extend([stem for stem in motors if stem not in selected][:motor_cap])
+    selected.extend([stem for stem in bikes if stem not in selected][:bike_cap])
+
+    rest = [stem for stem in pool if stem not in set(selected)]
+    rng.shuffle(rest)
+    selected.extend(rest)
+    selected = selected[:n]
+    rare_counts = {
+        cat: sum(1 for stem in selected if any(box["category"] == cat for box in boxes_by_stem[stem]))
+        for cat in RARE_CLASSES
+    }
+    print(f"sampled {len(selected)} frames; rare image counts: {rare_counts}")
+    return selected
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--train-n", type=int, default=3000)
     parser.add_argument("--val-n", type=int, default=500)
     parser.add_argument("--seed", type=int, default=245)
     parser.add_argument("--workers", type=int, default=16)
+    parser.add_argument("--motor-cap", type=int, default=1500, help="max train images containing motorcycle")
+    parser.add_argument("--bike-cap", type=int, default=1500, help="max train images containing bicycle")
+    parser.add_argument("--val-motor-cap", type=int, default=80)
+    parser.add_argument("--val-bike-cap", type=int, default=80)
     args = parser.parse_args()
 
     DET_ROOT.mkdir(parents=True, exist_ok=True)
@@ -252,16 +296,29 @@ def main() -> None:
         raise SystemExit("not enough labelled images with HF files")
 
     rng = random.Random(args.seed)
-    rng.shuffle(train_pool)
-    rng.shuffle(val_pool)
-    train_stems = train_pool[: args.train_n]
-    val_stems = val_pool[: args.val_n]
+    train_stems = sample_with_rare(
+        train_pool,
+        train_boxes,
+        args.train_n,
+        rng,
+        motor_cap=args.motor_cap,
+        bike_cap=args.bike_cap,
+    )
+    val_stems = sample_with_rare(
+        val_pool,
+        val_boxes,
+        args.val_n,
+        random.Random(args.seed + 1),
+        motor_cap=args.val_motor_cap,
+        bike_cap=args.val_bike_cap,
+    )
 
     manifest = {
         "source": "official BDD100K box2d labels + HF 100k images",
         "label_zip": LABEL_ZIP_URL,
         "hf_repo": HF_REPO,
         "seed": args.seed,
+        "rare_boost": list(RARE_CLASSES),
         "train": train_stems,
         "val": val_stems,
     }
