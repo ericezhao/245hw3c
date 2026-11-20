@@ -386,35 +386,38 @@ def write_report(rows: list[dict]) -> None:
     pdf.multi_cell(
         0,
         5,
-        "Four perception models were fine-tuned on the same 3,000 / 500 urban driving split: "
+        "Four perception models were fine-tuned on a BDD100K mini split: "
         "Faster R-CNN with a ResNet-50 FPN, YOLOv8s, DeepLabV3+ with a ResNet-50 encoder, and Mask R-CNN. "
         f"Training and the GPU timing ran on {gpu_name}. "
         + ("There is no CUDA device on this machine, so the GPU column is Metal, not an NVIDIA card. " if on_mps else "")
         +
-        "The official mini-zip host in the handout does not resolve. Images are BDD100K 10k frames. "
-        "Instance masks are connected components of the ten object classes in the semantic label, and stuff classes stay background.",
+        "The handout mini-zip host does not resolve. Detection/instance parts use official BDD box2d labels "
+        "on 10,000 train / 500 val 100k frames (rare classes boosted in train; val excludes the near-empty train class). "
+        "DeepLab uses a separate 3,000 / 500 semantic-10k split with trainId masks.",
     )
     pdf.ln(2)
     pdf.set_font("Helvetica", "B", 12)
     pdf.multi_cell(0, 6, "Measured results")
-    pdf.set_font("Helvetica", size=8)
-    widths = [42, 24, 22, 28, 28, 28]
-    headers = ["Model", "mAP@0.5", "mIoU", "FPS GPU", "FPS CPU", "Params (M)"]
+    pdf.set_font("Helvetica", "B", size=8)
+    pdf.set_x(pdf.l_margin)
+    widths = [46, 22, 20, 26, 26, 26]
+    headers = ["Model", "mAP@0.5", "mIoU", "FPS GPU", "FPS CPU", "Params"]
     for header, width in zip(headers, widths):
         pdf.cell(width, 6, header, border=1)
     pdf.ln()
     pdf.set_font("Helvetica", size=8)
     for row in rows:
         values = [
-            row["model"],
+            str(row.get("model", ""))[:22],
             cell(row.get("mAP@0.5")),
             cell(row.get("mIoU")),
             cell(row.get("FPS (GPU)"), 2),
             cell(row.get("FPS (CPU)"), 2),
             cell(row.get("Params (M)"), 2),
         ]
+        pdf.set_x(pdf.l_margin)
         for value, width in zip(values, widths):
-            pdf.cell(width, 6, value[:28], border=1)
+            pdf.cell(width, 6, value, border=1)
         pdf.ln()
     pdf.ln(2)
     pdf.set_font("Helvetica", size=9)
@@ -465,7 +468,7 @@ def write_report(rows: list[dict]) -> None:
         "DeepLab has no box mAP, so it is not on the scatter plot; use it only when the product needs a class per pixel "
         "and does not need a separate identity for each car or person.",
     )
-    _image(pdf, RESULTS / "fps_vs_map.png", 150)
+    _image(pdf, RESULTS / "fps_vs_map.png", 170)
 
     pdf.set_font("Helvetica", "B", 13)
     pdf.multi_cell(0, 7, "2. Architectural comparison")
@@ -478,11 +481,11 @@ def write_report(rows: list[dict]) -> None:
         "The rest of the per-class chart is the class imbalance from Part 1. Car, traffic sign, and traffic light dominate the counts, "
         "and train is nearly empty. Both detectors inherit COCO features for person, car, bus, and truck, so those classes move first. "
         "Rider is not a COCO class in the same way, and traffic sign is easy to confuse with poles and storefront text. "
-        "Sampling images by the rarest class they contain, and using a 10x lower learning rate on the Faster R-CNN backbone than on the new box head, "
-        "is there so fine-tuning does not wipe the COCO features while the new 11-way classifier is still random. "
+        "Rare-class boosting in the detection train split, and a 10x lower learning rate on the Faster R-CNN backbone than on the new box head, "
+        "keep fine-tuning from wiping COCO features while the new 11-way classifier is still random. "
         "YOLOv8 keeps its own mosaic augmentation and cosine schedule; the Ultralytics dashboard in the run folder is the training record.",
     )
-    _image(pdf, RESULTS / "per_class_ap.png", 155)
+    _image(pdf, RESULTS / "per_class_ap.png", 170)
     pdf.ln(1)
     pdf.multi_cell(
         0,
@@ -510,8 +513,8 @@ def write_report(rows: list[dict]) -> None:
     )
     pdf.ln(1)
     pdf.multi_cell(0, 5, tta_text)
-    _image(pdf, RESULTS / "semantic_vs_instance.png", 160)
-    _image(pdf, RESULTS / "deeplab_preds.png", 145)
+    _image(pdf, RESULTS / "semantic_vs_instance.png", 170)
+    _image(pdf, RESULTS / "deeplab_preds.png", 170)
 
     pdf.set_font("Helvetica", "B", 13)
     pdf.multi_cell(0, 7, "4. Failure modes")
@@ -544,7 +547,7 @@ def write_report(rows: list[dict]) -> None:
         "Mask leakage. A Mask R-CNN mask sometimes spills onto the road or into the neighboring car. "
         "RoI Align is aligned, but the 28x28 head is a low-resolution guess that gets pasted back, and our ground truth itself merges two cars "
         "when their semantic components touch. The model is then punished for splitting a blob the label called one object, or rewarded for leaking. "
-        "Mitigation: train the mask loss only inside the box, which Mask R-CNN already does, and replace connected-component labels with the official instance json when it is available. "
+        "Mitigation: keep the mask loss inside the box (Mask R-CNN already does) and prefer official boxes over older connected-component labels. "
         "For DeepLab, the matching failure is a thin object (pole, distant person) whose pixels are swallowed by the majority class. "
         "The class-weighted cross entropy and the flip TTA are the mitigations already measured above.",
     )
@@ -553,7 +556,7 @@ def write_report(rows: list[dict]) -> None:
         "failures_yolov8s.png",
         "failures_mask_rcnn.png",
     ):
-        _image(pdf, RESULTS / filename, 155)
+        _image(pdf, RESULTS / filename, 170)
 
     pdf.set_font("Helvetica", "B", 13)
     pdf.multi_cell(0, 7, "5. Deployment recommendation")
@@ -594,9 +597,9 @@ def write_report(rows: list[dict]) -> None:
         "Operating points I would set before a pilot: score 0.4 on person and rider, 0.5 on car, 0.6 on traffic sign, "
         "because signs are the noisiest false-positive class in the per-class chart. "
         "I would log every frame where the top person score is between 0.3 and 0.5 and review those weekly; that is the band where misses and false alarms trade off. "
-        "I would not claim a safety case from this mini split. The labels are a 3,500-image subset, train is almost absent, "
-        "and the instance masks are connected components rather than the official BDD boxes. "
-        "The next measurement before deployment is the same four models on the full BDD detection validation set, at the resolution the camera will actually use.",
+        "I would not claim a safety case from this mini split. It is still a sampled subset, the train class is scarce, "
+        "and the live camera resolution may differ from the training imgsz. "
+        "The next measurement before deployment is the same four models on the full BDD detection validation set.",
     )
     pdf.ln(2)
     pdf.set_font("Helvetica", size=9)
@@ -605,7 +608,7 @@ def write_report(rows: list[dict]) -> None:
         4.6,
         "Class imbalance note from the training set is in results/class_imbalance.txt. "
         "Figures for this report are in results/. Checkpoints are under checkpoints/ and are not committed. "
-        "The dataset download is prepare_bdd_mini.py; image files are gitignored.",
+        "Detection data: prepare_bdd_det_mini.py. Semantic data: prepare_bdd_mini.py. Image files are gitignored.",
     )
     out = ROOT / "report.pdf"
     pdf.output(str(out))
@@ -613,12 +616,31 @@ def write_report(rows: list[dict]) -> None:
 
 
 def _image(pdf: FPDF, path: Path, width: float) -> None:
+    """Place a figure fully on-page. Previous code left x at the right edge after tables/cells,
+    so images were drawn off the right margin and looked blank."""
     if not path.exists():
         return
-    if pdf.get_y() > 200:
+    pdf.set_x(pdf.l_margin)
+    page_w = pdf.w - pdf.l_margin - pdf.r_margin
+    max_w = min(width, page_w)
+    with Image.open(path) as img:
+        iw, ih = img.size
+    aspect = ih / max(iw, 1)
+    max_h = pdf.h - pdf.get_y() - pdf.b_margin - 8
+    # If the figure will not fit the remaining space, start a new page.
+    needed_h = max_w * aspect
+    if needed_h > max_h:
         pdf.add_page()
-    pdf.image(str(path), w=width)
-    pdf.ln(2)
+        pdf.set_x(pdf.l_margin)
+        max_h = pdf.h - pdf.get_y() - pdf.b_margin - 8
+    draw_w = max_w
+    draw_h = draw_w * aspect
+    if draw_h > max_h:
+        draw_h = max_h
+        draw_w = draw_h / max(aspect, 1e-6)
+    pdf.image(str(path), x=pdf.l_margin, w=draw_w, h=draw_h)
+    pdf.ln(3)
+    pdf.set_x(pdf.l_margin)
 
 
 def main() -> None:
