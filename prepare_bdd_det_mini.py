@@ -281,6 +281,11 @@ def main() -> None:
     parser.add_argument("--bike-cap", type=int, default=1500, help="max train images containing bicycle")
     parser.add_argument("--val-motor-cap", type=int, default=80)
     parser.add_argument("--val-bike-cap", type=int, default=80)
+    parser.add_argument(
+        "--val-exclude-train",
+        action="store_true",
+        help="drop val frames that contain the train class (1 miss should not zero out mean mAP50)",
+    )
     args = parser.parse_args()
 
     DET_ROOT.mkdir(parents=True, exist_ok=True)
@@ -309,7 +314,16 @@ def main() -> None:
     )
     val_rng = random.Random(args.seed + 1)
     val_pool_shuffled = list(val_pool)
+    if args.val_exclude_train:
+        val_pool_shuffled = [
+            stem
+            for stem in val_pool_shuffled
+            if not any(box["category"] == "train" for box in val_boxes[stem])
+        ]
+        print(f"val pool without train-class frames: {len(val_pool_shuffled)}")
     val_rng.shuffle(val_pool_shuffled)
+    if len(val_pool_shuffled) < args.val_n:
+        raise SystemExit("not enough val images after --val-exclude-train")
     val_stems = val_pool_shuffled[: args.val_n]
     print(
         "val rare image counts:",
@@ -325,6 +339,7 @@ def main() -> None:
         "hf_repo": HF_REPO,
         "seed": args.seed,
         "rare_boost_train_only": list(RARE_CLASSES),
+        "val_exclude_train": bool(args.val_exclude_train),
         "train": train_stems,
         "val": val_stems,
     }
